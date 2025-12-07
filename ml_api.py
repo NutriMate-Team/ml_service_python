@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
+from typing import Optional
 import uvicorn
 
 app = FastAPI()
@@ -10,6 +11,7 @@ class UserProfile(BaseModel):
     age: int
     gender: str # "Nam" hoặc "Nữ"
     activityLevel: str # "SEDENTARY", "LIGHT", "MODERATE", "ACTIVE", "VERY_ACTIVE"
+    targetWeightKg: Optional[float] = None # Optional: The weight the user wants to reach
 
 @app.post("/recommendations")
 def get_recommendations(profile: UserProfile):
@@ -33,7 +35,25 @@ def get_recommendations(profile: UserProfile):
     multiplier = activity_multipliers.get(profile.activityLevel, 1.2) 
     tdee = bmr * multiplier # Lượng calo để duy trì cân nặng
 
-    recommended_calories = tdee - 500
+    # DYNAMIC GOAL LOGIC: Tính Calo Mục tiêu dựa trên mục tiêu cân nặng
+    if profile.targetWeightKg is not None:
+        if profile.targetWeightKg > profile.weightKg:
+            # Mục tiêu Tăng cân (Thặng dư 500 calo)
+            recommended_calories = tdee + 500
+        elif profile.targetWeightKg < profile.weightKg:
+            # Mục tiêu Giảm cân (Thâm hụt 500 calo)
+            recommended_calories = tdee - 500
+        else:
+            # Mục tiêu Duy trì hoặc không xác định (TDEE)
+            recommended_calories = tdee
+    else:
+        # Nếu không có targetWeightKg, mặc định dùng deficit (giảm cân)
+        recommended_calories = tdee - 500
+    
+    # [QUAN TRỌNG] Giới hạn an toàn: Không bao giờ để recommended_calories xuống dưới BMR
+    # (mức tối thiểu để sống)
+    if recommended_calories < bmr:
+        recommended_calories = bmr
 
     return {
         "recommendedCalories": round(recommended_calories),
